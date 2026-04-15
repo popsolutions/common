@@ -4,11 +4,23 @@ set ${PGSQL_PASS:=postgres}
 
 PGSQL_VER=$(ls /usr/lib/postgresql/)
 CONF_DIR=/etc/postgresql/${PGSQL_VER}/main
+PG_DATA=/var/lib/postgresql/${PGSQL_VER}/main
+
+# Helper: stop PostgreSQL reliably in chroot
+# pg_ctlcluster and init.d both fail with "pid file is invalid" inside
+# FAB chroot because /proc is shared with host. Use pg_ctl directly.
+pg_stop() {
+    su postgres -c "/usr/lib/postgresql/${PGSQL_VER}/bin/pg_ctl stop -D ${PG_DATA} -m fast" 2>/dev/null || true
+}
+
+pg_start() {
+    su postgres -c "/usr/lib/postgresql/${PGSQL_VER}/bin/pg_ctl start -D ${PG_DATA} -l /var/log/postgresql/postgresql-${PGSQL_VER}-main.log -o '-c config_file=${CONF_DIR}/postgresql.conf'" 2>/dev/null
+}
 
 # Recreate postgres and templates using UTF-8
 pg_dropcluster --stop ${PGSQL_VER} main || true
 pg_createcluster --start -e UTF-8 ${PGSQL_VER} main
-/etc/init.d/postgresql stop
+pg_stop
 
 # Enable password encryption
 sed -i "/^#password_encryption = on/ s/#//" $CONF_DIR/postgresql.conf
@@ -17,7 +29,7 @@ sed -i "/^#password_encryption = on/ s/#//" $CONF_DIR/postgresql.conf
 sed -i "/^shared_buffers =/ s/32/24/" $CONF_DIR/postgresql.conf
 
 # Configure postgres password
-/etc/init.d/postgresql start
+pg_start
 
 su postgres -c 'psql postgres' << EOF
 alter user postgres with encrypted password '$PGSQL_PASS';
@@ -27,4 +39,4 @@ EOF
 su postgres -c "createuser --superuser root"
 su postgres -c "createdb root"
 
-/etc/init.d/postgresql stop
+pg_stop
