@@ -16,9 +16,19 @@ dl() {
 # [1] https://github.com/jmrenouard/MySQLTuner-perl
 # [2] https://github.com/major/MySQLTuner-perl
 BIN=/usr/local/bin
-VERSION=$(gh_releases jmrenouard/MySQLTuner-perl | sort -V | tail -1)
 REPO="jmrenouard/MySQLTuner-perl"
-URL="https://raw.githubusercontent.com/$REPO/refs/tags/$VERSION"
+
+# Try to get the latest release tag; fall back to 'master' branch if
+# gh_releases fails (e.g. GitHub API rate-limit without auth).
+VERSION=$(gh_releases "$REPO" | sort -V | tail -1) || true
+if [[ -z "$VERSION" ]]; then
+    echo "WARNING: gh_releases returned no version for $REPO." \
+         "Falling back to master branch." >&2
+    URL="https://raw.githubusercontent.com/$REPO/master"
+else
+    URL="https://raw.githubusercontent.com/$REPO/refs/tags/$VERSION"
+fi
+
 dl "$URL/mysqltuner.pl" $BIN
 mv "$BIN/mysqltuner.pl" $BIN/mysqltuner
 chmod +x "$BIN/mysqltuner"
